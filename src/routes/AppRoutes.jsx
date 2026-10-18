@@ -102,22 +102,13 @@ const AppRoutes = () => {
         >
           <Route index element={<DashboardPage />} />
           <Route path="profile" element={<ProfilePage />} />
-
-          {/* ADMIN only */}
-          {userRole === 'ADMIN' && (
-            <>
-              <Route path="books" element={<BookManagePage />} />
-              <Route path="categories" element={<CategoryManagePage />} />
-              <Route path="authors" element={<AuthorManagePage />} />
-              <Route path="publishers" element={<PublisherManagePage />} />
-              <Route path="customers" element={<CustomerManagePage />} />
-              <Route path="users" element={<UserManagePage />} />
-              <Route path="statistics" element={<StatisticsPage />} />
-            </>
-          )}
-
-          {/* ADMIN & STAFF */}
           <Route path="books" element={<BookManagePage />} />
+          <Route path="categories" element={<CategoryManagePage />} />
+          <Route path="authors" element={<AuthorManagePage />} />
+          <Route path="publishers" element={<PublisherManagePage />} />
+          <Route path="customers" element={<CustomerManagePage />} />
+          <Route path="users" element={<UserManagePage />} />
+          <Route path="statistics" element={<StatisticsPage />} />
           <Route path="inventory" element={<InventoryPage />} />
           <Route path="orders" element={<OrderManagePage />} />
           <Route path="orders/:id" element={<AdminOrderDetailPage />} />

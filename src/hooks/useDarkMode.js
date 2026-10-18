@@ -10,21 +10,26 @@ export const useDarkMode = () => {
 
   // Initialize dark mode from localStorage or system preference
   useEffect(() => {
-    const savedMode = localStorage.getItem('darkMode');
-    
-    if (savedMode !== null) {
-      const dark = savedMode === 'true';
-      setIsDark(dark);
-      applyDarkMode(dark);
-    } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      setIsDark(true);
-      applyDarkMode(true);
-    } else {
-      setIsDark(false);
-      applyDarkMode(false);
-    }
-    
-    setIsLoaded(true);
+    // Delay slightly để đảm bảo DOM đã ready
+    const timer = setTimeout(() => {
+      const savedMode = localStorage.getItem('darkMode');
+
+      if (savedMode !== null) {
+        const dark = savedMode === 'true';
+        setIsDark(dark);
+        applyDarkMode(dark);
+      } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        setIsDark(true);
+        applyDarkMode(true);
+      } else {
+        setIsDark(false);
+        applyDarkMode(false);
+      }
+
+      setIsLoaded(true);
+    }, 0);
+
+    return () => clearTimeout(timer);
   }, []);
 
   const applyDarkMode = (dark) => {
@@ -36,10 +41,12 @@ export const useDarkMode = () => {
   };
 
   const toggleDarkMode = () => {
-    const newValue = !isDark;
-    setIsDark(newValue);
-    applyDarkMode(newValue);
-    localStorage.setItem('darkMode', String(newValue));
+    setIsDark(prev => {
+      const newValue = !prev;
+      applyDarkMode(newValue);
+      localStorage.setItem('darkMode', String(newValue));
+      return newValue;
+    });
   };
 
   return { isDark, toggleDarkMode, isLoaded };
