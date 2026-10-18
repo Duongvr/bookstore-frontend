@@ -39,6 +39,7 @@ const StatisticsPage = lazy(() => import('../pages/admin/StatisticsPage'));
 const NotFoundPage = lazy(() => import('../pages/system/NotFoundPage'));
 const ServerErrorPage = lazy(() => import('../pages/system/ServerErrorPage'));
 const TailwindCheck = lazy(() => import('../pages/system/TailwindCheck'));
+const APITestPage = lazy(() => import('../pages/dev/APITestPage'));
 
 const AppRoutes = () => {
   const { userRole, loading } = useAuth();
@@ -124,6 +125,7 @@ const AppRoutes = () => {
 
         {/* ========== DEV ROUTES ========== */}
         <Route path="/dev/tailwind-check" element={<TailwindCheck />} />
+        <Route path="/dev/api-test" element={<APITestPage />} />
 
         {/* ========== SYSTEM ROUTES ========== */}
         <Route path="/404" element={<NotFoundPage />} />

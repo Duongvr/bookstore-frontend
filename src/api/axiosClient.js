@@ -36,6 +36,15 @@ axiosClient.interceptors.response.use(
       message: 'Có lỗi xảy ra',
     };
 
+    console.error('API Error Details:', {
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      message: error.message,
+      data: error.response?.data,
+      url: error.config?.url,
+      method: error.config?.method,
+    });
+
     if (error.response?.data?.message) {
       // Lỗi từ backend
       errorResponse.message = error.response.data.message;
