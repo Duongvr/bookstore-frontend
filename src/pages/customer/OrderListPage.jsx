@@ -1,159 +1,170 @@
-import React from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import { ChevronRight, Package, Calendar, ArrowRight } from 'lucide-react';
-import { useFetch } from '../../hooks/useFetch';
-import { getOrders } from '../../api/services/orderApi';
-import { ORDER_STATUS, ORDER_STATUS_LABELS, ORDER_STATUS_COLORS } from '../../utils/constants';
-import { formatVND, formatDate } from '../../utils/formatters';
-import Spinner from '../../components/common/Spinner';
-import EmptyState from '../../components/common/EmptyState';
-import StatusBadge from '../../components/common/StatusBadge';
-import Button from '../../components/common/Button';
+import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { ChevronRight } from 'lucide-react';
+import {
+  Card,
+  EmptyState,
+  ErrorState,
+  Skeleton,
+  Badge,
+  StatusBadge,
+  Button,
+} from '../../components/ui';
+import { orderApi } from '../../api/services';
 
 /**
- * OrderListPage: Danh sách đơn hàng tối ưu Responsive trên Mobile & Desktop
+ * OrderListPage Component
+ * View all customer orders
  */
 const OrderListPage = () => {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const status = searchParams.get('status') || '';
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [filter, setFilter] = useState('all'); // all, pending, delivered, cancelled
 
-  const { data: ordersData, loading } = useFetch(
-    async () => {
-      const res = await getOrders({
-        status: status || undefined,
-        page: 1,
-        limit: 20,
-      });
-      return res.data || [];
-    },
-    [status]
-  );
+  useEffect(() => {
+    const fetchOrders = async () => {
+      try {
+        setLoading(true);
+        const params = filter !== 'all' ? { status: filter } : {};
+        const data = await orderApi.getOrders(params);
+        setOrders(Array.isArray(data) ? data : data?.data || []);
+        setError(null);
+      } catch (err) {
+        console.error('Error fetching orders:', err);
+        setError('Failed to load orders');
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const tabs = [
-    { label: 'Tất cả', value: '' },
-    { label: 'Chờ xác nhận', value: ORDER_STATUS.PENDING },
-    { label: 'Đã xác nhận', value: ORDER_STATUS.CONFIRMED },
-    { label: 'Đang giao', value: ORDER_STATUS.SHIPPING },
-    { label: 'Đã giao', value: ORDER_STATUS.DELIVERED },
-    { label: 'Đã hủy', value: ORDER_STATUS.CANCELLED },
-  ];
+    fetchOrders();
+  }, [filter]);
 
-  return (
-    <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-6 space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 dark:text-white">
-          Đơn hàng của bạn
-        </h1>
-        <p className="text-xs sm:text-sm text-gray-500 mt-1">
-          Theo dõi hành trình vận chuyển và lịch sử mua sách
-        </p>
-      </div>
+  const formatPrice = (price) =>
+    new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', minimumFractionDigits: 0 }).format(price);
 
-      {/* Status Filter Horizontal Tabs (Smooth scroll on mobile) */}
-      <div className="flex gap-2 overflow-x-auto pb-2 border-b border-gray-200 dark:border-gray-800 no-scrollbar">
-        {tabs.map((tab) => {
-          const isActive = status === tab.value;
-          return (
-            <button
-              key={tab.value}
-              onClick={() => {
-                if (tab.value) {
-                  setSearchParams({ status: tab.value });
-                } else {
-                  setSearchParams({});
-                }
-              }}
-              className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all ${
-                isActive
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 border border-gray-200/80 dark:border-gray-700'
-              }`}
-            >
-              {tab.label}
-            </button>
-          );
-        })}
-      </div>
+  const formatDate = (date) =>
+    new Date(date).toLocaleDateString('vi-VN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 
-      {/* Orders List Content */}
-      {loading ? (
-        <div className="flex justify-center items-center py-20">
-          <Spinner size="lg" />
-        </div>
-      ) : ordersData && ordersData.length > 0 ? (
-        <div className="space-y-4">
-          {ordersData.map((order) => (
-            <Link
-              key={order.id}
-              to={`/orders/${order.id}`}
-              className="group block bg-white dark:bg-gray-800 rounded-2xl border border-gray-200/80 dark:border-gray-700 p-4 sm:p-6 hover:shadow-lg hover:border-indigo-300 dark:hover:border-indigo-500/50 transition-all"
-            >
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100 dark:border-gray-700/60">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
-                    <Package size={18} />
-                  </div>
-                  <div>
-                    <h3 className="font-extrabold text-sm sm:text-base text-gray-900 dark:text-white group-hover:text-indigo-600 transition-colors">
-                      Đơn hàng #{order.id}
-                    </h3>
-                    <p className="text-[11px] sm:text-xs text-gray-400 flex items-center gap-1 mt-0.5">
-                      <Calendar size={13} />
-                      {formatDate(order.created_at, 'long')}
-                    </p>
-                  </div>
-                </div>
+  const filterTabs = ['all', 'pending', 'confirmed', 'preparing', 'shipping', 'delivered', 'cancelled'];
 
-                <div className="flex items-center justify-between sm:justify-end gap-3">
-                  <StatusBadge
-                    status={order.status}
-                    statusMap={ORDER_STATUS_LABELS}
-                    colorMap={ORDER_STATUS_COLORS}
-                  />
-                </div>
-              </div>
-
-              {/* Order summary row */}
-              <div className="pt-3 flex items-center justify-between gap-2">
-                <div className="text-xs text-gray-500">
-                  <span>Tổng cộng: </span>
-                  <span className="font-extrabold text-sm sm:text-base text-indigo-600 dark:text-indigo-400">
-                    {formatVND(order.total_amount)}
-                  </span>
-                  <span className="text-gray-400 ml-1">
-                    ({order.items?.length || 0} sản phẩm)
-                  </span>
-                </div>
-
-                <div className="text-xs font-bold text-indigo-600 group-hover:translate-x-1 flex items-center gap-1 transition-transform">
-                  <span>Chi tiết</span>
-                  <ChevronRight size={16} />
-                </div>
-              </div>
-            </Link>
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-paper dark:bg-paper py-8 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto space-y-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} type="rect" height="180px" />
           ))}
         </div>
-      ) : (
-        <div className="bg-white dark:bg-gray-800 p-8 rounded-2xl border border-gray-200 dark:border-gray-700 text-center space-y-4">
-          <EmptyState
-            title="Chưa có đơn hàng nào"
-            description="Bạn chưa có đơn hàng nào ở trạng thái này. Hãy chọn cuốn sách bạn yêu thích và đặt ngay nhé!"
-          />
-          <div>
-            <Link to="/books">
-              <Button
-                variant="primary"
-                size="md"
-                icon={<ArrowRight size={16} />}
-                iconPosition="right"
-              >
-                Khám phá sách ngay
-              </Button>
-            </Link>
-          </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-paper dark:bg-paper py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <h1 className="text-display-md font-bold text-ink dark:text-ink mb-8">My Orders</h1>
+
+        {/* Filter Tabs */}
+        <div className="flex gap-2 mb-8 overflow-x-auto pb-2">
+          {filterTabs.map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setFilter(tab)}
+              className={`px-4 py-2 rounded-button font-medium text-body-sm whitespace-nowrap transition-smooth ${filter === tab
+                  ? 'bg-primary text-surface dark:bg-primary-light dark:text-ink'
+                  : 'bg-surface-muted text-ink-muted hover:bg-surface dark:bg-surface dark:text-ink-muted dark:hover:bg-surface-muted'
+                }`}
+            >
+              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            </button>
+          ))}
         </div>
-      )}
+
+        {/* Orders List */}
+        {error ? (
+          <ErrorState
+            title="Failed to load orders"
+            message={error}
+            onRetry={() => window.location.reload()}
+          />
+        ) : orders.length === 0 ? (
+          <EmptyState
+            title={filter === 'all' ? 'No orders yet' : `No ${filter} orders`}
+            description="You haven't placed any orders yet"
+            action={() => window.location.href = '/books'}
+            actionLabel="Start Shopping"
+          />
+        ) : (
+          <div className="space-y-4">
+            {orders.map((order) => (
+              <Link key={order.id} to={`/orders/${order.id}`}>
+                <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    {/* Order Info */}
+                    <div className="flex-1 space-y-2">
+                      <div className="flex items-center gap-3">
+                        <h3 className="font-bold text-heading-md text-ink dark:text-ink">
+                          Order #{order.id.toUpperCase().slice(0, 8)}
+                        </h3>
+                        <StatusBadge type="order" value={order.status} />
+                      </div>
+                      <p className="text-body-sm text-ink-muted dark:text-ink-muted">
+                        {formatDate(order.created_at)}
+                      </p>
+                    </div>
+
+                    {/* Order Summary */}
+                    <div className="flex items-center gap-4 md:gap-8">
+                      <div className="text-right">
+                        <p className="text-caption text-ink-muted dark:text-ink-muted mb-1">Items</p>
+                        <p className="font-bold text-body-md text-ink dark:text-ink">
+                          {order.items?.length || 0} book{order.items?.length !== 1 ? 's' : ''}
+                        </p>
+                      </div>
+
+                      <div className="text-right">
+                        <p className="text-caption text-ink-muted dark:text-ink-muted mb-1">Total</p>
+                        <p className="font-bold text-heading-md text-primary dark:text-primary-light">
+                          {formatPrice(order.total_amount)}
+                        </p>
+                      </div>
+
+                      {/* Payment Status */}
+                      <div className="hidden sm:block">
+                        <StatusBadge type="payment" value={order.payment_status} />
+                      </div>
+
+                      <ChevronRight className="w-5 h-5 text-ink-muted dark:text-ink-muted" />
+                    </div>
+                  </div>
+
+                  {/* Book Thumbnails (first 3) */}
+                  {order.items && order.items.length > 0 && (
+                    <div className="mt-4 flex gap-2 pt-4 border-t border-border dark:border-border">
+                      {order.items.slice(0, 3).map((item, i) => (
+                        <img
+                          key={i}
+                          src={item.book?.image_url}
+                          alt={item.book?.title}
+                          className="w-12 h-16 rounded-cover object-cover bg-surface-muted dark:bg-surface"
+                        />
+                      ))}
+                      {order.items.length > 3 && (
+                        <div className="w-12 h-16 rounded-cover bg-surface-muted dark:bg-surface flex items-center justify-center text-ink-muted dark:text-ink-muted text-label font-medium">
+                          +{order.items.length - 3}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </Card>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 };

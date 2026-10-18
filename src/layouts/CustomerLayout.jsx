@@ -14,13 +14,15 @@ import {
   ShieldCheck,
   Truck,
   RotateCcw,
+  Moon,
+  Sun,
 } from 'lucide-react';
-import SearchInput from '../components/common/SearchInput';
+import { SearchInput, Button, ErrorBoundary, IconButton } from '../components/ui';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
-import Button from '../components/common/Button';
-import ErrorBoundary from '../components/common/ErrorBoundary';
+import { useToast, ToastProvider } from '../context/ToastContext';
 import { ToastContainer } from '../components/common/Toast';
+import { useDarkMode } from '../hooks';
 import ChatWidget from '../components/features/ChatWidget/ChatWidget';
 
 /**
@@ -32,6 +34,7 @@ const CustomerLayout = () => {
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const { user, logout, isAuthenticated } = useAuth();
   const { itemCount } = useCart();
+  const { isDark, toggleDarkMode } = useDarkMode();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -69,7 +72,7 @@ const CustomerLayout = () => {
         <header className="bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 sticky top-0 z-40 transition-shadow duration-200">
           <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
             <div className="flex items-center justify-between h-16 gap-2 sm:gap-4">
-              
+
               {/* Logo */}
               <Link to="/" className="flex items-center gap-2.5 flex-shrink-0 group">
                 <div className="w-9 h-9 sm:w-10 sm:h-10 bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-md shadow-indigo-500/20 group-hover:scale-105 transition-transform">
@@ -96,6 +99,14 @@ const CustomerLayout = () => {
 
               {/* Right Action Icons & Menu */}
               <div className="flex items-center gap-1 sm:gap-3">
+                {/* Dark Mode Toggle */}
+                <IconButton
+                  icon={isDark ? Sun : Moon}
+                  onClick={toggleDarkMode}
+                  variant="ghost"
+                  aria-label={isDark ? 'Chế độ sáng' : 'Chế độ tối'}
+                />
+
                 {/* Mobile Search Toggle Icon */}
                 <button
                   type="button"
@@ -109,11 +120,10 @@ const CustomerLayout = () => {
                 {/* Desktop Link: Sách */}
                 <Link
                   to="/books"
-                  className={`hidden md:inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-semibold transition ${
-                    isNavActive('/books')
-                      ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50'
-                      : 'text-gray-700 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-50 dark:hover:bg-gray-800'
-                  }`}
+                  className={`hidden md:inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-semibold transition ${isNavActive('/books')
+                    ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50'
+                    : 'text-gray-700 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+                    }`}
                 >
                   Kho sách
                 </Link>
@@ -378,11 +388,10 @@ const CustomerLayout = () => {
         <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 shadow-[0_-4px_16px_rgba(0,0,0,0.06)] px-2 py-1.5 flex items-center justify-around">
           <Link
             to="/"
-            className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-lg text-[11px] font-medium transition ${
-              isNavActive('/') && location.pathname === '/'
-                ? 'text-indigo-600 dark:text-indigo-400 font-bold'
-                : 'text-gray-500 dark:text-gray-400 hover:text-indigo-600'
-            }`}
+            className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-lg text-[11px] font-medium transition ${isNavActive('/') && location.pathname === '/'
+              ? 'text-indigo-600 dark:text-indigo-400 font-bold'
+              : 'text-gray-500 dark:text-gray-400 hover:text-indigo-600'
+              }`}
           >
             <Home size={20} />
             <span>Trang chủ</span>
@@ -390,11 +399,10 @@ const CustomerLayout = () => {
 
           <Link
             to="/books"
-            className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-lg text-[11px] font-medium transition ${
-              isNavActive('/books')
-                ? 'text-indigo-600 dark:text-indigo-400 font-bold'
-                : 'text-gray-500 dark:text-gray-400 hover:text-indigo-600'
-            }`}
+            className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-lg text-[11px] font-medium transition ${isNavActive('/books')
+              ? 'text-indigo-600 dark:text-indigo-400 font-bold'
+              : 'text-gray-500 dark:text-gray-400 hover:text-indigo-600'
+              }`}
           >
             <BookOpen size={20} />
             <span>Tủ sách</span>
@@ -402,11 +410,10 @@ const CustomerLayout = () => {
 
           <Link
             to="/cart"
-            className={`relative flex flex-col items-center gap-0.5 py-1 px-3 rounded-lg text-[11px] font-medium transition ${
-              isNavActive('/cart')
-                ? 'text-indigo-600 dark:text-indigo-400 font-bold'
-                : 'text-gray-500 dark:text-gray-400 hover:text-indigo-600'
-            }`}
+            className={`relative flex flex-col items-center gap-0.5 py-1 px-3 rounded-lg text-[11px] font-medium transition ${isNavActive('/cart')
+              ? 'text-indigo-600 dark:text-indigo-400 font-bold'
+              : 'text-gray-500 dark:text-gray-400 hover:text-indigo-600'
+              }`}
           >
             <ShoppingCart size={20} />
             {itemCount > 0 && (
@@ -419,11 +426,10 @@ const CustomerLayout = () => {
 
           <Link
             to="/orders"
-            className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-lg text-[11px] font-medium transition ${
-              isNavActive('/orders')
-                ? 'text-indigo-600 dark:text-indigo-400 font-bold'
-                : 'text-gray-500 dark:text-gray-400 hover:text-indigo-600'
-            }`}
+            className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-lg text-[11px] font-medium transition ${isNavActive('/orders')
+              ? 'text-indigo-600 dark:text-indigo-400 font-bold'
+              : 'text-gray-500 dark:text-gray-400 hover:text-indigo-600'
+              }`}
           >
             <ClipboardList size={20} />
             <span>Đơn hàng</span>
@@ -431,11 +437,10 @@ const CustomerLayout = () => {
 
           <Link
             to={isAuthenticated ? '/profile' : '/login'}
-            className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-lg text-[11px] font-medium transition ${
-              isNavActive('/profile') || isNavActive('/login')
-                ? 'text-indigo-600 dark:text-indigo-400 font-bold'
-                : 'text-gray-500 dark:text-gray-400 hover:text-indigo-600'
-            }`}
+            className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-lg text-[11px] font-medium transition ${isNavActive('/profile') || isNavActive('/login')
+              ? 'text-indigo-600 dark:text-indigo-400 font-bold'
+              : 'text-gray-500 dark:text-gray-400 hover:text-indigo-600'
+              }`}
           >
             <User size={20} />
             <span>{isAuthenticated ? 'Tài khoản' : 'Đăng nhập'}</span>

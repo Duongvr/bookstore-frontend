@@ -1,170 +1,183 @@
-import React, { useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import { useFetch } from '../../hooks/useFetch';
+import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { Search } from 'lucide-react';
+import {
+  Button,
+  Card,
+  SearchInput,
+  Select,
+  EmptyState,
+  ErrorState,
+  Skeleton,
+  StatusBadge,
+  PageHeader,
+  Badge,
+} from '../../components/ui';
+import { orderApi } from '../../api/services';
 import { useToast } from '../../context/ToastContext';
-import { getOrders, confirmOrder } from '../../api/services/orderApi';
-import { ORDER_STATUS, ORDER_STATUS_LABELS, ORDER_STATUS_COLORS } from '../../utils/constants';
-import { formatVND, formatDate } from '../../utils/formatters';
-import DataTable from '../../components/common/DataTable';
-import Button from '../../components/common/Button';
-import ConfirmModal from '../../components/common/ConfirmModal';
-import { ChevronRight, Check } from 'lucide-react';
 
+/**
+ * OrderManagePage Component
+ * Manage orders: view, update status, filter
+ */
 const OrderManagePage = () => {
-  const [searchParams, setSearchParams] = useSearchParams();
   const { showToast } = useToast();
-  const [confirmTarget, setConfirmTarget] = useState(null);
-  const [isConfirming, setIsConfirming] = useState(false);
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [updatingId, setUpdatingId] = useState(null);
 
-  const page = parseInt(searchParams.get('page') || '1');
-  const status = searchParams.get('status') || '';
+  // Fetch orders
+  useEffect(() => {
+    const fetchOrders = async () => {
+      try {
+        setLoading(true);
+        const params = {
+          ...(searchTerm && { search: searchTerm }),
+          ...(statusFilter !== 'all' && { status: statusFilter }),
+          limit: 50,
+        };
+        const data = await orderApi.getOrders(params);
+        setOrders(Array.isArray(data) ? data : data?.data || []);
+        setError(null);
+      } catch (err) {
+        console.error('Error fetching orders:', err);
+        setError('Failed to load orders');
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const { data: ordersData, loading, refetch } = useFetch(
-    async () => {
-      const res = await getOrders({
-        status: status || undefined,
-        page,
-        limit: 20,
-      });
-      return res;
-    },
-    [page, status]
-  );
+    const timer = setTimeout(fetchOrders, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm, statusFilter]);
 
-  const tabs = [
-    { label: 'Tất cả', value: '' },
-    { label: 'Chờ xác nhận', value: ORDER_STATUS.PENDING },
-    { label: 'Đã xác nhận', value: ORDER_STATUS.CONFIRMED },
-    { label: 'Đang giao', value: ORDER_STATUS.SHIPPING },
-    { label: 'Đã giao', value: ORDER_STATUS.DELIVERED },
-  ];
-
-  const handleConfirm = async () => {
-    if (!confirmTarget) return;
+  const handleStatusChange = async (orderId, newStatus) => {
     try {
-      setIsConfirming(true);
-      await confirmOrder(confirmTarget.id);
-      showToast({ type: 'success', message: 'Xác nhận đơn hàng thành công' });
-      setConfirmTarget(null);
-      refetch();
+      setUpdatingId(orderId);
+      await orderApi.updateOrderStatus(orderId, newStatus);
+      setOrders(orders.map(o =>
+        o.id === orderId ? { ...o, status: newStatus } : o
+      ));
+      showToast('success', 'Order status updated');
     } catch (err) {
-      showToast({ type: 'error', message: err?.message });
+      showToast('error', err.message || 'Failed to update status');
     } finally {
-      setIsConfirming(false);
+      setUpdatingId(null);
     }
   };
 
-  const columns = [
-    {
-      key: 'id',
-      header: 'Đơn hàng',
-      width: '100px',
-      render: (v) => `#${v}`,
-    },
-    {
-      key: 'customer_name',
-      header: 'Khách hàng',
-      width: '150px',
-    },
-    {
-      key: 'total_amount',
-      header: 'Tổng tiền',
-      width: '120px',
-      render: (v) => formatVND(v),
-    },
-    {
-      key: 'status',
-      header: 'Trạng thái',
-      width: '130px',
-      render: (v) => (
-        <span className={`px-2 py-1 text-xs rounded-full font-medium ${ORDER_STATUS_COLORS[v]}`}>
-          {ORDER_STATUS_LABELS[v]}
-        </span>
-      ),
-    },
-    {
-      key: 'created_at',
-      header: 'Ngày tạo',
-      width: '150px',
-      render: (v) => formatDate(v, 'short'),
-    },
-    {
-      key: 'actions',
-      header: 'Thao tác',
-      width: '150px',
-      render: (_, row) => (
-        <div className="flex gap-2">
-          <Link
-            to={`/admin/orders/${row.id}`}
-            className="text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center gap-1"
-          >
-            Xem chi tiết <ChevronRight size={14} />
-          </Link>
-          {row.status === ORDER_STATUS.PENDING && (
-            <Button
-              size="xs"
-              variant="primary"
-              onClick={() => setConfirmTarget(row)}
-              icon={<Check size={14} />}
-            >
-              Xác nhận
-            </Button>
-          )}
-        </div>
-      ),
-    },
-  ];
+  const statuses = ['all', 'PENDING', 'CONFIRMED', 'PREPARING', 'SHIPPING', 'DELIVERED', 'CANCELLED'];
+  const nextStatuses = {
+    PENDING: ['CONFIRMED', 'CANCELLED'],
+    CONFIRMED: ['PREPARING', 'CANCELLED'],
+    PREPARING: ['SHIPPING'],
+    SHIPPING: ['DELIVERED'],
+    DELIVERED: [],
+    CANCELLED: [],
+  };
+
+  const formatPrice = (price) =>
+    new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', minimumFractionDigits: 0 }).format(price);
+
+  const formatDate = (date) =>
+    new Date(date).toLocaleDateString('vi-VN', { month: '2-digit', day: '2-digit', year: 'numeric' });
 
   return (
-    <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Quản lý đơn hàng</h1>
-        <p className="text-gray-600 mt-1">Quản lý và xác nhận đơn hàng</p>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-2 overflow-x-auto pb-2 border-b border-gray-200">
-        {tabs.map((tab) => (
-          <button
-            key={tab.value}
-            onClick={() => {
-              if (tab.value) {
-                setSearchParams({ status: tab.value, page: '1' });
-              } else {
-                setSearchParams({});
-              }
-            }}
-            className={`px-4 py-2 font-medium whitespace-nowrap ${
-              status === tab.value
-                ? 'text-blue-600 border-b-2 border-blue-600'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Table */}
-      <DataTable
-        columns={columns}
-        data={ordersData?.data || []}
-        loading={loading}
-        page={page}
-        totalPages={ordersData?.totalPages || 1}
-        onPageChange={(p) => setSearchParams({ ...Object.fromEntries(searchParams), page: p.toString() })}
+    <div className="space-y-6">
+      {/* Header */}
+      <PageHeader
+        title="Orders"
+        subtitle="Manage customer orders"
       />
 
-      {/* Confirm Modal */}
-      {confirmTarget && (
-        <ConfirmModal
-          title="Xác nhận đơn hàng"
-          message={`Xác nhận đơn hàng #${confirmTarget.id}?`}
-          onConfirm={handleConfirm}
-          onCancel={() => setConfirmTarget(null)}
-          isLoading={isConfirming}
-          confirmText="Xác nhận"
+      {/* Filters */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <SearchInput
+          placeholder="Search by order ID or customer..."
+          value={searchTerm}
+          onChange={setSearchTerm}
         />
+        <Select
+          options={statuses.map(s => ({
+            value: s,
+            label: s === 'all' ? 'All Statuses' : s.charAt(0) + s.slice(1).toLowerCase(),
+          }))}
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+        />
+      </div>
+
+      {/* Orders List */}
+      {error ? (
+        <ErrorState message={error} onRetry={() => window.location.reload()} />
+      ) : loading ? (
+        <div className="space-y-4">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} type="rect" height="120px" />
+          ))}
+        </div>
+      ) : orders.length === 0 ? (
+        <EmptyState title="No orders found" />
+      ) : (
+        <div className="space-y-4">
+          {orders.map((order) => (
+            <Card key={order.id} className="p-6">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                {/* Order Info */}
+                <div className="flex-1">
+                  <Link
+                    to={`/admin/orders/${order.id}`}
+                    className="font-bold text-heading-md text-primary hover:text-primary-dark dark:text-primary-light mb-2"
+                  >
+                    Order #{order.id.slice(0, 8)}
+                  </Link>
+                  <div className="flex flex-wrap gap-4 text-body-sm text-ink-muted dark:text-ink-muted">
+                    <span>
+                      Customer: <span className="text-ink dark:text-ink font-medium">{order.customer_name}</span>
+                    </span>
+                    <span>
+                      Date: <span className="text-ink dark:text-ink font-medium">{formatDate(order.created_at)}</span>
+                    </span>
+                    <span>
+                      Items: <span className="text-ink dark:text-ink font-medium">{order.items?.length || 0}</span>
+                    </span>
+                  </div>
+                </div>
+
+                {/* Total & Status */}
+                <div className="flex items-end justify-between md:flex-col md:items-end gap-4">
+                  <div>
+                    <p className="text-heading-lg font-bold text-primary dark:text-primary-light">
+                      {formatPrice(order.total_amount)}
+                    </p>
+                    <div className="flex gap-2 mt-2">
+                      <StatusBadge type="order" value={order.status} />
+                      <StatusBadge type="payment" value={order.payment_status} />
+                    </div>
+                  </div>
+
+                  {/* Status Change Dropdown */}
+                  {nextStatuses[order.status]?.length > 0 && (
+                    <select
+                      value={order.status}
+                      onChange={(e) => handleStatusChange(order.id, e.target.value)}
+                      disabled={updatingId === order.id}
+                      className="px-3 py-2 border border-border rounded-button bg-surface text-ink disabled:opacity-50 dark:bg-surface-muted dark:border-border dark:text-ink"
+                    >
+                      <option value={order.status}>{order.status}</option>
+                      {nextStatuses[order.status].map(s => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
       )}
     </div>
   );

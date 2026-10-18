@@ -1,292 +1,288 @@
-import React, { useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, AlertCircle, Package, MapPin, CreditCard, Clock, CheckCircle2, Truck, BookOpen } from 'lucide-react';
-import { useFetch } from '../../hooks/useFetch';
-import { useToast } from '../../context/ToastContext';
-import { getOrderDetail, cancelOrder } from '../../api/services/orderApi';
-import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, PAYMENT_METHOD_LABELS } from '../../utils/constants';
-import { formatVND, formatDate } from '../../utils/formatters';
-import Button from '../../components/common/Button';
-import ConfirmModal from '../../components/common/ConfirmModal';
-import Spinner from '../../components/common/Spinner';
-import ErrorState from '../../components/common/ErrorState';
-import StatusBadge from '../../components/common/StatusBadge';
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { ChevronLeft, AlertCircle } from 'lucide-react';
+import {
+  Card,
+  ErrorState,
+  DetailSkeleton,
+  Badge,
+  StatusBadge,
+  Button,
+} from '../../components/ui';
+import { orderApi } from '../../api/services';
 
 /**
- * OrderDetailPage: Chi tiết đơn hàng tối ưu Responsive trên máy tính và điện thoại
+ * OrderDetailPage Component
+ * View order details and tracking
  */
 const OrderDetailPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { showToast } = useToast();
-  const [cancelConfirm, setCancelConfirm] = useState(false);
-  const [isCancelling, setIsCancelling] = useState(false);
+  const [order, setOrder] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const { data: order, loading, error, refetch } = useFetch(
-    async () => {
-      const res = await getOrderDetail(id);
-      return res.data;
-    },
-    [id]
-  );
+  useEffect(() => {
+    const fetchOrder = async () => {
+      try {
+        setLoading(true);
+        const data = await orderApi.getOrderDetail(id);
+        setOrder(data);
+        setError(null);
+      } catch (err) {
+        console.error('Error fetching order:', err);
+        setError(err.response?.status === 404 ? 'Order not found' : 'Failed to load order');
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const canCancel = order && ['PENDING', 'CONFIRMED'].includes(order.status);
+    fetchOrder();
+  }, [id]);
 
-  const handleCancel = async () => {
-    try {
-      setIsCancelling(true);
-      await cancelOrder(id);
-      showToast({
-        type: 'success',
-        message: 'Đơn hàng đã được hủy thành công',
-      });
-      setCancelConfirm(false);
-      refetch();
-    } catch (err) {
-      showToast({
-        type: 'error',
-        message: err?.message || 'Không thể hủy đơn hàng',
-      });
-    } finally {
-      setIsCancelling(false);
-    }
-  };
+  const formatPrice = (price) =>
+    new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', minimumFractionDigits: 0 }).format(price);
+
+  const formatDate = (date) =>
+    new Date(date).toLocaleDateString('vi-VN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+
+  const statusTimeline = [
+    { status: 'PENDING', label: 'Order Placed' },
+    { status: 'CONFIRMED', label: 'Confirmed' },
+    { status: 'PREPARING', label: 'Preparing' },
+    { status: 'SHIPPING', label: 'Shipping' },
+    { status: 'DELIVERED', label: 'Delivered' },
+  ];
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center py-20">
-        <Spinner size="lg" />
+      <div className="min-h-screen bg-paper dark:bg-paper py-8 px-4 sm:px-6 lg:px-8">
+        <DetailSkeleton />
       </div>
     );
   }
 
   if (error || !order) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => navigate(-1)}
-          icon={<ArrowLeft size={16} />}
-          className="mb-4"
-        >
-          Quay lại
-        </Button>
-        <ErrorState message="Không thể tải thông tin đơn hàng này" onRetry={refetch} />
+      <div className="min-h-screen bg-paper dark:bg-paper py-8 px-4 sm:px-6 lg:px-8">
+        <ErrorState
+          title={error === 'Order not found' ? 'Order not found' : 'Failed to load order'}
+          message={error}
+          onRetry={() => navigate('/orders')}
+          retryLabel="Back to Orders"
+        />
       </div>
     );
   }
 
+  const currentStatusIndex = statusTimeline.findIndex(s => s.status === order.status);
+
   return (
-    <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-6 space-y-6">
-      {/* Top Bar Navigation */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-gray-200 dark:border-gray-800">
-        <div>
-          <button
-            onClick={() => navigate('/orders')}
-            className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-gray-600 dark:text-gray-300 hover:text-indigo-600 transition mb-2"
-          >
-            <ArrowLeft size={16} />
-            Quay lại danh sách đơn hàng
-          </button>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 dark:text-white flex items-center gap-2">
-            Đơn hàng #{order.id}
-          </h1>
-          <p className="text-xs text-gray-500 mt-1">
-            Đặt ngày: {formatDate(order.created_at, 'long')}
-          </p>
+    <div className="min-h-screen bg-paper dark:bg-paper py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-4xl mx-auto">
+        {/* Back Button */}
+        <button
+          onClick={() => navigate('/orders')}
+          className="inline-flex items-center gap-2 text-primary hover:text-primary-dark dark:text-primary-light mb-8 font-semibold"
+        >
+          <ChevronLeft size={16} />
+          Back to Orders
+        </button>
+
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+          <div>
+            <h1 className="text-display-md font-bold text-ink dark:text-ink">
+              Order #{order.id.toUpperCase().slice(0, 8)}
+            </h1>
+            <p className="text-body-md text-ink-muted dark:text-ink-muted mt-2">
+              Placed on {formatDate(order.created_at)}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <StatusBadge type="order" value={order.status} />
+            <StatusBadge type="payment" value={order.payment_status} />
+          </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <span className="text-xs font-semibold text-gray-500">Trạng thái:</span>
-          <StatusBadge
-            status={order.status}
-            statusMap={ORDER_STATUS_LABELS}
-            colorMap={ORDER_STATUS_COLORS}
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
-        {/* Left Column: Items & Shipping (8 cols) */}
-        <div className="lg:col-span-8 space-y-6">
-          
-          {/* Order Items */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl sm:rounded-3xl border border-gray-200/80 dark:border-gray-700 p-4 sm:p-6 shadow-sm">
-            <h2 className="text-base sm:text-lg font-extrabold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-              <Package size={20} className="text-indigo-600" />
-              Sản phẩm trong đơn ({order.items?.length || 0})
-            </h2>
-
-            <div className="space-y-3 divide-y divide-gray-100 dark:divide-gray-700/60">
-              {order.items?.map((item) => (
-                <div
-                  key={item.id}
-                  className="pt-3 first:pt-0 flex items-center justify-between gap-3"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-12 h-16 rounded-lg bg-slate-100 dark:bg-gray-700 flex items-center justify-center text-indigo-400 flex-shrink-0 border border-gray-200 dark:border-gray-700">
-                      <BookOpen size={20} />
+        {/* Status Timeline */}
+        {!order.cancelled && (
+          <Card className="p-6 mb-8">
+            <h2 className="font-bold text-heading-md text-ink dark:text-ink mb-6">Delivery Status</h2>
+            <div className="flex justify-between gap-2">
+              {statusTimeline.map((step, index) => (
+                <div key={step.status} className="flex-1">
+                  <div className="flex flex-col items-center">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-body-sm mb-2 transition-colors ${index <= currentStatusIndex
+                        ? 'bg-primary text-surface dark:bg-primary-light dark:text-ink'
+                        : 'bg-surface-muted text-ink-muted dark:bg-surface dark:text-ink-muted'
+                      }`}>
+                      {index + 1}
                     </div>
-                    <div className="min-w-0">
-                      <Link
-                        to={`/books/${item.book_id}`}
-                        className="text-xs sm:text-sm font-bold text-gray-900 dark:text-gray-100 hover:text-indigo-600 truncate block"
-                      >
-                        {item.title}
-                      </Link>
-                      <p className="text-xs text-gray-500">
-                        {item.quantity} x {formatVND(item.unit_price)}
-                      </p>
-                    </div>
+                    <p className="text-caption font-medium text-center text-ink dark:text-ink">
+                      {step.label}
+                    </p>
                   </div>
-                  <span className="font-extrabold text-xs sm:text-sm text-gray-900 dark:text-gray-100 flex-shrink-0">
-                    {formatVND(item.quantity * item.unit_price)}
-                  </span>
+                  {index < statusTimeline.length - 1 && (
+                    <div className={`h-1 mx-1 my-3 transition-colors ${index < currentStatusIndex
+                        ? 'bg-primary dark:bg-primary-light'
+                        : 'bg-border dark:bg-border'
+                      }`} />
+                  )}
                 </div>
               ))}
             </div>
-          </div>
+          </Card>
+        )}
 
-          {/* Shipping Address & Customer Info */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl sm:rounded-3xl border border-gray-200/80 dark:border-gray-700 p-4 sm:p-6 shadow-sm">
-            <h2 className="text-base sm:text-lg font-extrabold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-              <MapPin size={20} className="text-indigo-600" />
-              Thông tin nhận hàng
-            </h2>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs sm:text-sm">
-              <div>
-                <p className="text-gray-400 text-xs">Người nhận:</p>
-                <p className="font-bold text-gray-800 dark:text-gray-200 mt-0.5">{order.customer_name}</p>
-              </div>
-              <div>
-                <p className="text-gray-400 text-xs">Số điện thoại:</p>
-                <p className="font-bold text-gray-800 dark:text-gray-200 mt-0.5">{order.customer_phone}</p>
-              </div>
-              <div>
-                <p className="text-gray-400 text-xs">Email:</p>
-                <p className="font-bold text-gray-800 dark:text-gray-200 mt-0.5">{order.customer_email || 'Không có'}</p>
-              </div>
-              <div className="sm:col-span-2">
-                <p className="text-gray-400 text-xs">Địa chỉ giao hàng:</p>
-                <p className="font-bold text-gray-800 dark:text-gray-200 mt-0.5">{order.shipping_address}</p>
-              </div>
-              {order.notes && (
-                <div className="sm:col-span-2 p-3 bg-slate-50 dark:bg-gray-900 rounded-xl">
-                  <p className="text-gray-400 text-xs font-semibold">Ghi chú của bạn:</p>
-                  <p className="text-gray-700 dark:text-gray-300 mt-1">{order.notes}</p>
-                </div>
+        {/* Cancelled Notice */}
+        {order.cancelled && (
+          <div className="mb-8 p-4 bg-danger-soft dark:bg-danger-soft/20 rounded-card flex gap-3">
+            <AlertCircle className="w-5 h-5 text-danger dark:text-danger flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold text-body-md text-danger dark:text-danger">Order Cancelled</p>
+              {order.cancellation_reason && (
+                <p className="text-body-sm text-danger dark:text-danger mt-1">{order.cancellation_reason}</p>
               )}
             </div>
           </div>
+        )}
 
-          {/* Timeline Status History */}
-          {order.status_history && order.status_history.length > 0 && (
-            <div className="bg-white dark:bg-gray-800 rounded-2xl sm:rounded-3xl border border-gray-200/80 dark:border-gray-700 p-4 sm:p-6 shadow-sm">
-              <h2 className="text-base sm:text-lg font-extrabold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                <Clock size={20} className="text-indigo-600" />
-                Lịch sử xử lý đơn hàng
-              </h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Main Content */}
+          <div className="md:col-span-2 space-y-6">
+            {/* Order Items */}
+            <Card className="divide-y divide-border dark:divide-border">
+              <div className="p-6">
+                <h2 className="font-bold text-heading-md text-ink dark:text-ink mb-4">Order Items</h2>
+              </div>
 
-              <div className="space-y-4 pl-2">
-                {order.status_history.map((history, idx) => (
-                  <div key={idx} className="flex gap-4">
-                    <div className="flex flex-col items-center">
-                      <div className="w-3.5 h-3.5 bg-indigo-600 rounded-full ring-4 ring-indigo-100 dark:ring-indigo-950" />
-                      {idx < order.status_history.length - 1 && (
-                        <div className="w-0.5 h-12 bg-gray-200 dark:bg-gray-700 my-1" />
-                      )}
-                    </div>
-                    <div className="flex-1 pb-2">
-                      <p className="font-bold text-xs sm:text-sm text-gray-900 dark:text-white">
-                        {ORDER_STATUS_LABELS[history.status]}
+              {order.items?.map((item) => (
+                <div key={item.id} className="p-6 flex gap-4">
+                  {item.book?.image_url && (
+                    <img
+                      src={item.book.image_url}
+                      alt={item.book?.title}
+                      className="w-20 h-28 rounded-cover object-cover bg-surface-muted dark:bg-surface"
+                    />
+                  )}
+                  <div className="flex-1">
+                    <h3 className="font-bold text-body-md text-ink dark:text-ink">
+                      {item.book?.title}
+                    </h3>
+                    {item.book?.authors && (
+                      <p className="text-body-sm text-ink-muted dark:text-ink-muted mt-1">
+                        by {item.book.authors.map(a => a.name).join(', ')}
                       </p>
-                      <p className="text-[11px] text-gray-400">
-                        {formatDate(history.changed_at, 'long')}
-                      </p>
-                      {history.notes && (
-                        <p className="text-xs text-gray-600 dark:text-gray-300 mt-0.5">
-                          {history.notes}
+                    )}
+                    <div className="flex items-end justify-between mt-4">
+                      <div>
+                        <p className="text-body-sm text-ink-muted dark:text-ink-muted">
+                          {formatPrice(item.unit_price)} × {item.quantity}
                         </p>
-                      )}
+                      </div>
+                      <p className="font-bold text-heading-sm text-ink dark:text-ink">
+                        {formatPrice(item.unit_price * item.quantity)}
+                      </p>
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
+                </div>
+              ))}
+            </Card>
 
-        </div>
+            {/* Order History */}
+            {order.status_history && order.status_history.length > 0 && (
+              <Card className="p-6">
+                <h2 className="font-bold text-heading-md text-ink dark:text-ink mb-4">Order History</h2>
+                <div className="space-y-3">
+                  {order.status_history.map((event, i) => (
+                    <div key={i} className="flex gap-4 pb-3 border-b border-border dark:border-border last:border-0">
+                      <div className="text-body-sm text-ink-muted dark:text-ink-muted min-w-fit">
+                        {formatDate(event.changed_at)}
+                      </div>
+                      <div>
+                        <p className="font-medium text-body-sm text-ink dark:text-ink">
+                          {event.old_status} → {event.new_status}
+                        </p>
+                        {event.note && (
+                          <p className="text-body-sm text-ink-muted dark:text-ink-muted mt-1">
+                            {event.note}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+          </div>
 
-        {/* Right Column: Payment & Cancel Action (4 cols) */}
-        <div className="lg:col-span-4 space-y-5">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl sm:rounded-3xl border border-gray-200/80 dark:border-gray-700 p-5 sm:p-6 shadow-sm sticky top-24 space-y-4">
-            <h2 className="text-base sm:text-lg font-extrabold text-gray-900 dark:text-white pb-3 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
-              <CreditCard size={18} className="text-indigo-600" />
-              Chi tiết thanh toán
-            </h2>
-
-            <div className="space-y-2.5 text-xs sm:text-sm">
-              <div className="flex justify-between text-gray-600 dark:text-gray-400">
-                <span>Tạm tính tiền sách:</span>
-                <span className="font-semibold text-gray-900 dark:text-gray-200">
-                  {formatVND(order.subtotal || order.total_amount)}
-                </span>
-              </div>
-              <div className="flex justify-between text-gray-600 dark:text-gray-400">
-                <span>Phí vận chuyển:</span>
-                <span className="font-semibold text-emerald-600">Miễn phí</span>
-              </div>
-              <div className="flex justify-between text-gray-600 dark:text-gray-400">
-                <span>Hình thức:</span>
-                <span className="font-bold text-gray-800 dark:text-gray-200">
-                  {PAYMENT_METHOD_LABELS[order.payment_method] || 'COD'}
-                </span>
-              </div>
-            </div>
-
-            <div className="pt-3 border-t border-gray-100 dark:border-gray-700 flex justify-between items-baseline">
-              <div>
-                <p className="text-xs text-gray-500 uppercase font-bold">Tổng thanh toán</p>
-                <p className="text-2xl font-extrabold text-indigo-600 dark:text-indigo-400">
-                  {formatVND(order.total_amount)}
+          {/* Sidebar */}
+          <div className="md:col-span-1 space-y-6">
+            {/* Shipping Info */}
+            <Card className="p-6 space-y-3">
+              <h3 className="font-bold text-heading-md text-ink dark:text-ink">Shipping Address</h3>
+              <div className="text-body-sm text-ink dark:text-ink space-y-1">
+                <p className="font-medium">{order.customer_name}</p>
+                <p>{order.customer_phone}</p>
+                <p className="text-ink-muted dark:text-ink-muted whitespace-pre-wrap">
+                  {order.shipping_address}
                 </p>
               </div>
-            </div>
+            </Card>
 
-            {/* Cancel Action if allowed */}
-            {canCancel && (
-              <div className="pt-2">
-                <Button
-                  variant="danger"
-                  size="md"
-                  onClick={() => setCancelConfirm(true)}
-                  className="w-full text-xs font-bold"
-                  icon={<AlertCircle size={16} />}
-                >
-                  Hủy đơn hàng này
-                </Button>
+            {/* Payment Info */}
+            <Card className="p-6 space-y-3">
+              <h3 className="font-bold text-heading-md text-ink dark:text-ink">Payment Information</h3>
+              <div className="space-y-2 text-body-sm">
+                <div className="flex justify-between">
+                  <span className="text-ink-muted dark:text-ink-muted">Method:</span>
+                  <span className="text-ink dark:text-ink font-medium">
+                    {order.payment_method === 'COD' ? 'Cash on Delivery' : order.payment_method === 'BANK_TRANSFER' ? 'Bank Transfer' : order.payment_method}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-ink-muted dark:text-ink-muted">Status:</span>
+                  <StatusBadge type="payment" value={order.payment_status} />
+                </div>
               </div>
+            </Card>
+
+            {/* Order Summary */}
+            <Card className="p-6 space-y-3">
+              <h3 className="font-bold text-heading-md text-ink dark:text-ink">Order Summary</h3>
+              <div className="space-y-2 text-body-sm border-b border-border dark:border-border pb-3">
+                <div className="flex justify-between">
+                  <span className="text-ink-muted dark:text-ink-muted">Subtotal:</span>
+                  <span className="text-ink dark:text-ink">{formatPrice(order.subtotal)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-ink-muted dark:text-ink-muted">Shipping:</span>
+                  <span className="text-ink dark:text-ink">{formatPrice(order.shipping_cost || 0)}</span>
+                </div>
+              </div>
+              <div className="flex justify-between font-bold pt-3">
+                <span className="text-ink dark:text-ink">Total:</span>
+                <span className="text-heading-lg text-primary dark:text-primary-light">
+                  {formatPrice(order.total_amount)}
+                </span>
+              </div>
+            </Card>
+
+            {/* Action Buttons */}
+            {!order.cancelled && currentStatusIndex < statusTimeline.length - 1 && (
+              <Button
+                variant="primary"
+                size="lg"
+                onClick={() => window.location.reload()}
+                className="w-full"
+              >
+                Refresh Status
+              </Button>
             )}
           </div>
         </div>
-
       </div>
-
-      {/* Cancel Confirmation Modal */}
-      {cancelConfirm && (
-        <ConfirmModal
-          title="Xác nhận hủy đơn hàng?"
-          message="Bạn có chắc chắn muốn hủy đơn hàng này không? Sau khi hủy, bạn sẽ cần đặt lại nếu muốn mua."
-          onConfirm={handleCancel}
-          onCancel={() => setCancelConfirm(false)}
-          isLoading={isCancelling}
-          confirmText="Xác nhận hủy"
-          confirmVariant="danger"
-        />
-      )}
     </div>
   );
 };

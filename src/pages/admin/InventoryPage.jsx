@@ -1,174 +1,276 @@
-import React, { useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { useForm } from 'react-hook-form';
-import { z } from 'zod';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { useFetch } from '../../hooks/useFetch';
-import { useToast } from '../../context/ToastContext';
-import { getInventory, importInventory, getInventoryHistory } from '../../api/services/inventoryApi';
-import { getBooks } from '../../api/services/bookApi';
-import DataTable from '../../components/common/DataTable';
-import Modal from '../../components/common/Modal';
-import FormField from '../../components/common/FormField';
-import Button from '../../components/common/Button';
-import { formatDate } from '../../utils/formatters';
-import { INVENTORY_TYPE_LABELS } from '../../utils/constants';
+import React, { useState, useEffect } from 'react';
 import { Plus } from 'lucide-react';
+import {
+  Button,
+  DataTable,
+  SearchInput,
+  Select,
+  EmptyState,
+  ErrorState,
+  Modal,
+  FormField,
+  Input,
+  Textarea,
+  Card,
+  PageHeader,
+  Badge,
+} from '../../components/ui';
+import { bookApi, inventoryApi } from '../../api/services';
+import { useToast } from '../../context/ToastContext';
 
-const importSchema = z.object({
-  book_id: z.string().min(1, 'Vui lòng chọn sách'),
-  quantity: z.coerce.number().positive('Số lượng phải > 0'),
-  unit_cost: z.coerce.number().positive('Chi phí phải > 0'),
-  notes: z.string().optional(),
-});
-
+/**
+ * InventoryPage Component
+ * Manage inventory: view stock, import goods, track history
+ */
 const InventoryPage = () => {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState('inventory');
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const { showToast } = useToast();
+  const [books, setBooks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterLowStock, setFilterLowStock] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [selectedBook, setSelectedBook] = useState(null);
+  const [importQuantity, setImportQuantity] = useState('');
+  const [importing, setImporting] = useState(false);
 
-  const page = parseInt(searchParams.get('page') || '1');
+  // Fetch books
+  useEffect(() => {
+    const fetchBooks = async () => {
+      try {
+        setLoading(true);
+        const params = {
+          ...(searchTerm && { search: searchTerm }),
+          limit: 50,
+        };
+        const data = await bookApi.getBooks(params);
+        let booksList = Array.isArray(data) ? data : data?.data || [];
 
-  const { data: inventoryData, loading: invLoading, refetch: invRefetch } = useFetch(
-    async () => {
-      const res = await getInventory({ page, limit: 10 });
-      return res;
-    },
-    [page]
-  );
+        if (filterLowStock) {
+          booksList = booksList.filter(b => b.stock_quantity <= 5);
+        }
 
-  const { data: historyData, loading: histLoading } = useFetch(
-    async () => {
-      const res = await getInventoryHistory({ page, limit: 20 });
-      return res.data || [];
-    },
-    [page]
-  );
+        setBooks(booksList);
+        setError(null);
+      } catch (err) {
+        console.error('Error fetching books:', err);
+        setError('Failed to load inventory');
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const { data: books } = useFetch(async () => {
-    const res = await getBooks({ limit: 100 });
-    return res.data || [];
-  }, []);
+    const timer = setTimeout(fetchBooks, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm, filterLowStock]);
 
-  const { register, handleSubmit, formState: { errors, isSubmitting }, reset } = useForm({
-    resolver: zodResolver(importSchema),
-  });
+  const handleImport = async () => {
+    if (!selectedBook || !importQuantity) {
+      showToast('error', 'Please select book and quantity');
+      return;
+    }
 
-  const onSubmit = async (data) => {
     try {
-      await importInventory(data);
-      showToast({ type: 'success', message: 'Nhập kho thành công' });
-      setIsModalOpen(false);
-      reset();
-      invRefetch();
+      setImporting(true);
+      await inventoryApi.importStock({
+        book_id: selectedBook.id,
+        quantity: parseInt(importQuantity),
+        note: `Manual import`,
+      });
+
+      // Update local state
+      setBooks(books.map(b =>
+        b.id === selectedBook.id
+          ? { ...b, stock_quantity: b.stock_quantity + parseInt(importQuantity) }
+          : b
+      ));
+
+      showToast('success', `Imported ${importQuantity} units`);
+      setImportModalOpen(false);
+      setImportQuantity('');
+      setSelectedBook(null);
     } catch (err) {
-      showToast({ type: 'error', message: err?.message });
+      showToast('error', err.message || 'Failed to import');
+    } finally {
+      setImporting(false);
     }
   };
 
-  const invColumns = [
-    { key: 'book_id', header: 'Sách', width: '200px', render: (_, row) => row.book?.title || '-' },
-    { key: 'total_stock', header: 'Tổng kho', width: '100px' },
-    { key: 'available_stock', header: 'Có sẵn', width: '100px' },
-    { key: 'reserved_stock', header: 'Đã đặt', width: '100px' },
-  ];
-
-  const historyColumns = [
-    { key: 'type', header: 'Loại', width: '120px', render: (v) => INVENTORY_TYPE_LABELS[v] || v },
-    { key: 'quantity', header: 'Số lượng', width: '100px' },
-    { key: 'created_at', header: 'Ngày', width: '150px', render: (v) => formatDate(v, 'long') },
-    { key: 'notes', header: 'Ghi chú', width: '200px', render: (v) => v || '-' },
+  const columns = [
+    {
+      header: 'Book',
+      accessor: 'title',
+      render: (row) => (
+        <div className="max-w-xs">
+          <p className="font-medium text-body-sm text-ink dark:text-ink line-clamp-1">
+            {row.title}
+          </p>
+          <p className="text-label text-ink-muted dark:text-ink-muted">
+            {row.category?.name}
+          </p>
+        </div>
+      ),
+    },
+    {
+      header: 'Stock',
+      accessor: 'stock_quantity',
+      render: (row) => (
+        <div>
+          <p className="font-bold text-body-md text-ink dark:text-ink">
+            {row.stock_quantity}
+          </p>
+          {row.stock_quantity <= 5 && (
+            <Badge variant="warning" size="sm">Low</Badge>
+          )}
+        </div>
+      ),
+    },
+    {
+      header: 'Price',
+      accessor: 'price',
+      render: (row) => (
+        <p className="text-body-sm text-ink dark:text-ink">
+          {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', minimumFractionDigits: 0 }).format(row.price)}
+        </p>
+      ),
+    },
+    {
+      header: 'Total Value',
+      accessor: 'id',
+      render: (row) => (
+        <p className="text-body-sm font-medium text-primary dark:text-primary-light">
+          {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', minimumFractionDigits: 0 }).format(row.price * row.stock_quantity)}
+        </p>
+      ),
+    },
+    {
+      header: 'Action',
+      accessor: 'id',
+      render: (row) => (
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => {
+            setSelectedBook(row);
+            setImportModalOpen(true);
+          }}
+        >
+          Import
+        </Button>
+      ),
+    },
   ];
 
   return (
-    <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Quản lý kho</h1>
-        <p className="text-gray-600 mt-1">Quản lý tồn kho sách</p>
+    <div className="space-y-6">
+      {/* Header */}
+      <PageHeader
+        title="Inventory"
+        subtitle="Manage product stock levels"
+      />
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="p-6 space-y-2">
+          <p className="text-body-sm text-ink-muted dark:text-ink-muted">Total Books</p>
+          <p className="text-heading-lg font-bold text-ink dark:text-ink">
+            {books.length}
+          </p>
+        </Card>
+        <Card className="p-6 space-y-2">
+          <p className="text-body-sm text-ink-muted dark:text-ink-muted">Low Stock</p>
+          <p className="text-heading-lg font-bold text-warning">
+            {books.filter(b => b.stock_quantity <= 5 && b.stock_quantity > 0).length}
+          </p>
+        </Card>
+        <Card className="p-6 space-y-2">
+          <p className="text-body-sm text-ink-muted dark:text-ink-muted">Out of Stock</p>
+          <p className="text-heading-lg font-bold text-danger">
+            {books.filter(b => b.stock_quantity === 0).length}
+          </p>
+        </Card>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-2 border-b border-gray-200">
-        <button
-          onClick={() => setActiveTab('inventory')}
-          className={`px-4 py-2 font-medium ${activeTab === 'inventory' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-600'}`}
-        >
-          Tồn kho
-        </button>
-        <button
-          onClick={() => setActiveTab('history')}
-          className={`px-4 py-2 font-medium ${activeTab === 'history' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-600'}`}
-        >
-          Lịch sử
-        </button>
-      </div>
-
-      {/* Content */}
-      {activeTab === 'inventory' && (
-        <>
-          <Button variant="primary" onClick={() => setIsModalOpen(true)} icon={<Plus size={18} />}>
-            Nhập kho
-          </Button>
-
-          <DataTable
-            columns={invColumns}
-            data={inventoryData?.data || []}
-            loading={invLoading}
-            page={page}
-            totalPages={inventoryData?.totalPages || 1}
-            onPageChange={(p) => setSearchParams({ page: p.toString() })}
-          />
-        </>
-      )}
-
-      {activeTab === 'history' && (
-        <DataTable
-          columns={historyColumns}
-          data={historyData || []}
-          loading={histLoading}
-          emptyText="Không có lịch sử"
+      {/* Filters */}
+      <div className="flex gap-4">
+        <SearchInput
+          placeholder="Search books..."
+          value={searchTerm}
+          onChange={setSearchTerm}
+          className="flex-1"
         />
+        <label className="flex items-center gap-2 px-4 py-2 border border-border rounded-button cursor-pointer hover:bg-surface-muted transition-colors dark:border-border dark:hover:bg-surface">
+          <input
+            type="checkbox"
+            checked={filterLowStock}
+            onChange={(e) => setFilterLowStock(e.target.checked)}
+            className="accent-primary dark:accent-primary-light"
+          />
+          <span className="text-body-sm font-medium text-ink dark:text-ink">Low Stock Only</span>
+        </label>
+      </div>
+
+      {/* Inventory Table */}
+      {error ? (
+        <ErrorState message={error} onRetry={() => window.location.reload()} />
+      ) : books.length === 0 ? (
+        <EmptyState title="No items found" />
+      ) : (
+        <DataTable columns={columns} data={books} loading={loading} />
       )}
 
-      {/* Modal */}
-      {isModalOpen && (
-        <Modal title="Nhập kho" onClose={() => setIsModalOpen(false)}>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <FormField label="Sách" required error={errors.book_id?.message}>
-              <select {...register('book_id')} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="">Chọn sách</option>
-                {books?.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.title}
-                  </option>
-                ))}
-              </select>
-            </FormField>
+      {/* Import Modal */}
+      <Modal
+        isOpen={importModalOpen}
+        onClose={() => setImportModalOpen(false)}
+        title={`Import Stock: ${selectedBook?.title}`}
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => setImportModalOpen(false)}
+              disabled={importing}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleImport}
+              loading={importing}
+            >
+              Import
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <FormField label="Current Stock" required>
+            <Input
+              type="number"
+              value={selectedBook?.stock_quantity || 0}
+              disabled
+            />
+          </FormField>
 
-            <FormField label="Số lượng" required error={errors.quantity?.message}>
-              <input {...register('quantity')} type="number" placeholder="Số lượng" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </FormField>
+          <FormField label="Import Quantity" required>
+            <Input
+              type="number"
+              min="1"
+              value={importQuantity}
+              onChange={(e) => setImportQuantity(e.target.value)}
+              placeholder="Enter quantity"
+            />
+          </FormField>
 
-            <FormField label="Chi phí/Cuốn" required error={errors.unit_cost?.message}>
-              <input {...register('unit_cost')} type="number" placeholder="Chi phí" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </FormField>
-
-            <FormField label="Ghi chú">
-              <textarea {...register('notes')} placeholder="Ghi chú" rows={2} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </FormField>
-
-            <div className="flex gap-3 justify-end pt-4">
-              <Button type="button" variant="secondary" onClick={() => setIsModalOpen(false)}>
-                Hủy
-              </Button>
-              <Button type="submit" variant="primary" loading={isSubmitting} disabled={isSubmitting}>
-                Nhập kho
-              </Button>
-            </div>
-          </form>
-        </Modal>
-      )}
+          <FormField label="After Import">
+            <Input
+              type="number"
+              value={(selectedBook?.stock_quantity || 0) + (parseInt(importQuantity) || 0)}
+              disabled
+            />
+          </FormField>
+        </div>
+      </Modal>
     </div>
   );
 };

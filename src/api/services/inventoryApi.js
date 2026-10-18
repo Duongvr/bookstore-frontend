@@ -14,6 +14,10 @@ export const importInventory = (data) => {
   );
 };
 
+export const importStock = (data) => {
+  return importInventory(data);
+};
+
 export const getInventoryHistory = (params = {}) => {
   return makeRequest('getInventoryHistory', [params], () =>
     axiosClient.get(ENDPOINTS.INVENTORY.HISTORY, { params })

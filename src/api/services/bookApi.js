@@ -38,6 +38,25 @@ export const deleteBook = (id) => {
   );
 };
 
+export const getLowStockBooks = (params = {}) => {
+  return makeRequest('getLowStockBooks', [params], () =>
+    axiosClient.get(ENDPOINTS.BOOKS.LOW_STOCK || '/books/low-stock', { params })
+  );
+};
+
+// Delegated methods - import from their respective APIs
+export const getCategories = (params = {}) => {
+  return axiosClient.get(ENDPOINTS.CATEGORIES?.LIST || '/categories', { params });
+};
+
+export const getAuthors = (params = {}) => {
+  return axiosClient.get(ENDPOINTS.AUTHORS?.LIST || '/authors', { params });
+};
+
+export const getPublishers = (params = {}) => {
+  return axiosClient.get(ENDPOINTS.PUBLISHERS?.LIST || '/publishers', { params });
+};
+
 export const mapBook = (apiData) => ({
   id: apiData.book_id || apiData.id,
   title: apiData.title,

@@ -1,239 +1,270 @@
-import React from 'react';
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { useFetch } from '../../hooks/useFetch';
-import { getRevenue, getTopBooks } from '../../api/services/statsApi';
-import { getOrders } from '../../api/services/orderApi';
-import { formatVND, formatDate } from '../../utils/formatters';
-import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS } from '../../utils/constants';
-import Button from '../../components/common/Button';
-import Spinner from '../../components/common/Spinner';
-import { RefreshCw } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { TrendingUp, ShoppingCart, AlertCircle, BookOpen } from 'lucide-react';
+import { Card, Button, Skeleton, ErrorState, PageHeader, ChartCard, DataTable, StatusBadge } from '../../components/ui';
+import { statsApi, orderApi, bookApi } from '../../api/services';
 
 /**
- * DashboardPage: Trang chủ admin
- * - Thống kê doanh thu
- * - Đơn hàng gần đây
- * - Sách bán chạy
- * - Biểu đồ
+ * DashboardPage Component
+ * Admin dashboard with key metrics, charts, and recent data
  */
 const DashboardPage = () => {
-  const { data: revenueData, loading: revenueLoading, refetch: refetchRevenue } = useFetch(
-    async () => {
-      const res = await getRevenue({ limit: 30 });
-      return res.data || [];
-    },
-    []
-  );
+  const [stats, setStats] = useState(null);
+  const [recentOrders, setRecentOrders] = useState([]);
+  const [lowStockBooks, setLowStockBooks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [errors, setErrors] = useState({});
 
-  const { data: topBooks, loading: topBooksLoading } = useFetch(
-    async () => {
-      const res = await getTopBooks({ limit: 5 });
-      return res.data || [];
-    },
-    []
-  );
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        setLoading(true);
 
-  const { data: recentOrders, loading: ordersLoading } = useFetch(
-    async () => {
-      const res = await getOrders({ limit: 5 });
-      return res.data || [];
-    },
-    []
-  );
+        // Fetch all data in parallel
+        const [statsData, ordersData, inventoryData] = await Promise.all([
+          statsApi.getDashboardStats?.() || {},
+          orderApi.getOrders?.({ limit: 5, status: 'PENDING' }) || [],
+          bookApi.getLowStockBooks?.({ limit: 5 }) || [],
+        ]);
 
-  const handleRefresh = () => {
-    refetchRevenue();
-  };
+        setStats(statsData);
+        setRecentOrders(Array.isArray(ordersData) ? ordersData : ordersData?.data || []);
+        setLowStockBooks(Array.isArray(inventoryData) ? inventoryData : inventoryData?.data || []);
+        setErrors({});
+      } catch (err) {
+        console.error('Dashboard error:', err);
+        setErrors({ general: 'Failed to load dashboard' });
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const isLoading = revenueLoading || topBooksLoading || ordersLoading;
+    fetchDashboardData();
+  }, []);
 
-  if (isLoading) {
-    return (
-      <div className="flex justify-center py-12">
-        <Spinner />
-      </div>
-    );
-  }
+  const formatPrice = (price) =>
+    new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', minimumFractionDigits: 0 }).format(price);
 
-  // Calculate stats
-  const totalRevenue = revenueData?.reduce((sum, item) => sum + (item.amount || 0), 0) || 0;
-  const totalOrders = recentOrders?.length || 0;
+  const formatDate = (date) =>
+    new Date(date).toLocaleDateString('vi-VN', { month: '2-digit', day: '2-digit', year: 'numeric' });
 
-  const statCards = [
+  // KPI Cards
+  const kpis = [
     {
-      label: 'Doanh thu tháng này',
-      value: formatVND(totalRevenue),
-      icon: '💰',
-      trend: '+12%',
-    },
-    {
-      label: 'Đơn hàng mới',
-      value: totalOrders,
-      icon: '📦',
-      trend: '+5',
+      title: 'Revenue (This Month)',
+      value: formatPrice(stats?.monthly_revenue || 0),
+      change: stats?.revenue_change || 0,
+      icon: TrendingUp,
+      color: 'primary',
     },
     {
-      label: 'Sách bán chạy',
-      value: topBooks?.length || 0,
-      icon: '📚',
-      trend: 'Top',
+      title: 'New Orders',
+      value: stats?.new_orders_count || 0,
+      change: stats?.orders_change || 0,
+      icon: ShoppingCart,
+      color: 'accent',
+    },
+    {
+      title: 'Pending Orders',
+      value: stats?.pending_orders_count || 0,
+      change: 0,
+      icon: AlertCircle,
+      color: 'warning',
+    },
+    {
+      title: 'Low Stock Items',
+      value: stats?.low_stock_count || 0,
+      change: 0,
+      icon: BookOpen,
+      color: 'danger',
     },
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-600 mt-1">Tổng quan hoạt động cửa hàng</p>
-        </div>
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={handleRefresh}
-          icon={<RefreshCw size={18} />}
-        >
-          Làm mới
-        </Button>
-      </div>
+      <PageHeader
+        title="Dashboard"
+        subtitle="Welcome to Phương Anh Admin Portal"
+      />
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {statCards.map((card) => (
-          <div
-            key={card.label}
-            className="bg-white rounded-lg shadow-sm border border-gray-200 p-6"
-          >
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-gray-600">{card.label}</p>
-              <span className="text-2xl">{card.icon}</span>
-            </div>
-            <div className="flex items-end gap-2">
-              <p className="text-2xl font-bold text-gray-900">{card.value}</p>
-              <p className="text-sm text-green-600 mb-1">{card.trend}</p>
-            </div>
-          </div>
-        ))}
-      </div>
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {loading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} type="rect" height="150px" />
+          ))
+        ) : (
+          kpis.map((kpi, i) => {
+            const Icon = kpi.icon;
+            return (
+              <Card key={i} className="p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-body-sm text-ink-muted dark:text-ink-muted">
+                    {kpi.title}
+                  </h3>
+                  <div className={`p-2 rounded-button bg-${kpi.color}-light dark:bg-${kpi.color}-light/20`}>
+                    <Icon className={`w-5 h-5 text-${kpi.color} dark:text-${kpi.color}-light`} />
+                  </div>
+                </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Revenue Chart */}
-        {revenueData && revenueData.length > 0 && (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">
-              Doanh thu
-            </h2>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={revenueData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
-                <YAxis />
-                <Tooltip formatter={(v) => formatVND(v)} />
-                <Legend />
-                <Line
-                  type="monotone"
-                  dataKey="amount"
-                  stroke="#3b82f6"
-                  name="Doanh thu"
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+                <div>
+                  <p className={`text-display-sm font-bold text-${kpi.color} dark:text-${kpi.color}-light`}>
+                    {kpi.value}
+                  </p>
+                  {kpi.change !== 0 && (
+                    <p className={`text-body-sm mt-2 ${kpi.change > 0 ? 'text-success' : 'text-danger'}`}>
+                      {kpi.change > 0 ? '+' : ''}{kpi.change}% vs last month
+                    </p>
+                  )}
+                </div>
+              </Card>
+            );
+          })
         )}
+      </div>
+
+      {/* Charts & Tables Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Revenue Chart */}
+        <div className="lg:col-span-2">
+          <ChartCard
+            title="Revenue (Last 30 Days)"
+            loading={loading}
+            error={errors.revenue}
+            empty={!stats?.revenue_data}
+          >
+            {/* Placeholder for chart - would be replaced with Recharts */}
+            <div className="h-64 bg-surface-muted dark:bg-surface rounded-card flex items-center justify-center text-ink-muted dark:text-ink-muted">
+              Chart visualization (Recharts integration)
+            </div>
+          </ChartCard>
+        </div>
 
         {/* Top Books */}
-        {topBooks && topBooks.length > 0 && (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">
-              Top 5 sách bán chạy
-            </h2>
-            <div className="space-y-3">
-              {topBooks.map((book, idx) => (
+        <ChartCard
+          title="Top 5 Books"
+          loading={loading}
+          error={errors.top_books}
+          empty={!stats?.top_books}
+        >
+          <div className="space-y-3">
+            {stats?.top_books?.slice(0, 5).map((book, i) => (
+              <div key={book.id} className="flex items-center gap-3 p-2 hover:bg-surface-muted dark:hover:bg-surface rounded-button transition-colors">
+                <span className="text-heading-sm font-bold text-primary dark:text-primary-light w-6 text-center">
+                  {i + 1}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-body-sm font-medium text-ink dark:text-ink truncate">
+                    {book.title}
+                  </p>
+                  <p className="text-label text-ink-muted dark:text-ink-muted">
+                    {book.sold_count} sold
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </ChartCard>
+      </div>
+
+      {/* Recent Orders & Low Stock */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Recent Orders */}
+        <Card className="p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-heading-md text-ink dark:text-ink">Recent Orders</h3>
+            <Link to="/admin/orders" className="text-primary hover:text-primary-dark dark:text-primary-light text-body-sm font-medium">
+              View All →
+            </Link>
+          </div>
+
+          {loading ? (
+            <Skeleton count={5} height="50px" />
+          ) : recentOrders.length > 0 ? (
+            <div className="space-y-2">
+              {recentOrders.map((order) => (
+                <Link
+                  key={order.id}
+                  to={`/admin/orders/${order.id}`}
+                  className="flex items-center justify-between p-3 hover:bg-surface-muted dark:hover:bg-surface rounded-button transition-colors"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-body-sm text-ink dark:text-ink">
+                      Order #{order.id.slice(0, 8)}
+                    </p>
+                    <p className="text-label text-ink-muted dark:text-ink-muted">
+                      {formatDate(order.created_at)}
+                    </p>
+                  </div>
+                  <div className="text-right ml-4">
+                    <p className="font-semibold text-body-sm text-ink dark:text-ink">
+                      {formatPrice(order.total_amount)}
+                    </p>
+                    <StatusBadge type="order" value={order.status} />
+                  </div>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <p className="text-body-sm text-ink-muted dark:text-ink-muted">No pending orders</p>
+          )}
+        </Card>
+
+        {/* Low Stock Items */}
+        <Card className="p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-heading-md text-ink dark:text-ink">Low Stock Items</h3>
+            <Link to="/admin/inventory" className="text-primary hover:text-primary-dark dark:text-primary-light text-body-sm font-medium">
+              View All →
+            </Link>
+          </div>
+
+          {loading ? (
+            <Skeleton count={5} height="50px" />
+          ) : lowStockBooks.length > 0 ? (
+            <div className="space-y-2">
+              {lowStockBooks.map((book) => (
                 <div
                   key={book.id}
-                  className="flex items-center justify-between p-3 bg-gray-50 rounded"
+                  className="flex items-center justify-between p-3 bg-danger-soft dark:bg-danger-soft/20 rounded-button"
                 >
-                  <div className="flex items-center gap-3 flex-1">
-                    <span className="text-lg font-bold text-blue-600 min-w-[24px]">
-                      #{idx + 1}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 line-clamp-1">
-                        {book.title}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {book.soldCount || 0} bản bán
-                      </p>
-                    </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-body-sm text-ink dark:text-ink line-clamp-1">
+                      {book.title}
+                    </p>
+                    <p className="text-label text-danger dark:text-danger">
+                      {book.stock_quantity} in stock
+                    </p>
                   </div>
-                  <p className="text-sm font-bold text-gray-900 flex-shrink-0 ml-2">
-                    {formatVND(book.revenue || 0)}
-                  </p>
+                  <Link
+                    to={`/admin/inventory?search=${book.id}`}
+                    className="text-primary hover:text-primary-dark dark:text-primary-light text-body-sm font-medium ml-4"
+                  >
+                    Import
+                  </Link>
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          ) : (
+            <p className="text-body-sm text-ink-muted dark:text-ink-muted">All items well stocked</p>
+          )}
+        </Card>
       </div>
 
-      {/* Recent Orders */}
-      {recentOrders && recentOrders.length > 0 && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h2 className="text-lg font-bold text-gray-900 mb-4">
-            Đơn hàng gần đây
-          </h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-900">
-                    Đơn hàng
-                  </th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-900">
-                    Khách hàng
-                  </th>
-                  <th className="px-4 py-3 text-center font-semibold text-gray-900">
-                    Ngày
-                  </th>
-                  <th className="px-4 py-3 text-right font-semibold text-gray-900">
-                    Tổng tiền
-                  </th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-900">
-                    Trạng thái
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {recentOrders.map((order) => (
-                  <tr key={order.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-blue-600 font-medium">
-                      #{order.id}
-                    </td>
-                    <td className="px-4 py-3 text-gray-900">
-                      {order.customer_name}
-                    </td>
-                    <td className="px-4 py-3 text-center text-gray-600">
-                      {formatDate(order.created_at, 'short')}
-                    </td>
-                    <td className="px-4 py-3 text-right font-bold text-gray-900">
-                      {formatVND(order.total_amount)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${ORDER_STATUS_COLORS[order.status] || 'bg-gray-100'
-                          }`}
-                      >
-                        {ORDER_STATUS_LABELS[order.status] || order.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {/* Refresh & Last Updated */}
+      <div className="flex items-center justify-between p-4 bg-surface-muted dark:bg-surface rounded-card">
+        <p className="text-body-sm text-ink-muted dark:text-ink-muted">
+          Last updated: {new Date().toLocaleTimeString('vi-VN')}
+        </p>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => window.location.reload()}
+        >
+          Refresh
+        </Button>
+      </div>
     </div>
   );
 };

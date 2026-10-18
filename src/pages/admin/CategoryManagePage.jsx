@@ -1,193 +1,242 @@
-import React, { useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { useForm } from 'react-hook-form';
-import { z } from 'zod';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { useFetch } from '../../hooks/useFetch';
+import React, { useState, useEffect } from 'react';
+import { Plus, Trash2, Edit2 } from 'lucide-react';
+import {
+  Button,
+  DataTable,
+  EmptyState,
+  ErrorState,
+  Modal,
+  FormField,
+  Input,
+  Textarea,
+  ConfirmModal,
+  PageHeader,
+} from '../../components/ui';
+import { categoryApi } from '../../api/services';
 import { useToast } from '../../context/ToastContext';
-import { getCategories, createCategory, updateCategory, deleteCategory } from '../../api/services/categoryApi';
-import CrudTable from '../../components/features/CrudTable';
-import Modal from '../../components/common/Modal';
-import FormField from '../../components/common/FormField';
-import Button from '../../components/common/Button';
 
 /**
- * CategoryManagePage: Quản lý danh mục
- * - Danh sách danh mục
- * - Thêm/sửa/xóa danh mục
+ * CategoryManagePage Component
+ * Manage book categories: create, edit, delete
  */
-const categorySchema = z.object({
-  name: z.string().min(2, 'Tên phải ít nhất 2 ký tự'),
-  description: z.string().optional(),
-  icon: z.string().optional(),
-});
-
 const CategoryManagePage = () => {
-  const [searchParams, setSearchParams] = useSearchParams();
   const { showToast } = useToast();
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState(null);
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [formData, setFormData] = useState({ name: '', description: '' });
+  const [saving, setSaving] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
 
-  const page = parseInt(searchParams.get('page') || '1');
-  const search = searchParams.get('q') || '';
+  // Fetch categories
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        setLoading(true);
+        const data = await categoryApi.getCategories?.();
+        setCategories(Array.isArray(data) ? data : data?.data || []);
+        setError(null);
+      } catch (err) {
+        console.error('Error fetching categories:', err);
+        setError('Failed to load categories');
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const { data: categoriesData, loading, refetch } = useFetch(
-    async () => {
-      const res = await getCategories({
-        q: search,
-        page,
-        limit: 10,
-      });
-      return res;
-    },
-    [page, search]
-  );
+    fetchCategories();
+  }, []);
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-    reset,
-  } = useForm({
-    resolver: zodResolver(categorySchema),
-    defaultValues: editingItem || {},
-  });
-
-  const handleAdd = () => {
-    setEditingItem(null);
-    reset({});
-    setIsModalOpen(true);
+  const handleOpenForm = (category = null) => {
+    if (category) {
+      setEditingId(category.id);
+      setFormData({ name: category.name, description: category.description || '' });
+    } else {
+      setEditingId(null);
+      setFormData({ name: '', description: '' });
+    }
+    setFormOpen(true);
   };
 
-  const handleEdit = (item) => {
-    setEditingItem(item);
-    reset(item);
-    setIsModalOpen(true);
-  };
+  const handleSave = async () => {
+    if (!formData.name.trim()) {
+      showToast('error', 'Category name is required');
+      return;
+    }
 
-  const handleDeleteCategory = async (id) => {
     try {
-      await deleteCategory(id);
-      showToast({ type: 'success', message: 'Xóa danh mục thành công' });
-      refetch();
+      setSaving(true);
+
+      if (editingId) {
+        await categoryApi.updateCategory(editingId, formData);
+        setCategories(categories.map(c =>
+          c.id === editingId ? { ...c, ...formData } : c
+        ));
+        showToast('success', 'Category updated');
+      } else {
+        const newCategory = await categoryApi.createCategory(formData);
+        setCategories([...categories, newCategory]);
+        showToast('success', 'Category created');
+      }
+
+      setFormOpen(false);
+      setFormData({ name: '', description: '' });
     } catch (err) {
-      showToast({ type: 'error', message: err?.message || 'Xóa thất bại' });
+      showToast('error', err.message || 'Failed to save category');
+    } finally {
+      setSaving(false);
     }
   };
 
-  const onSubmit = async (data) => {
+  const handleDelete = async (categoryId) => {
     try {
-      if (editingItem) {
-        await updateCategory(editingItem.id, data);
-        showToast({ type: 'success', message: 'Cập nhật thành công' });
-      } else {
-        await createCategory(data);
-        showToast({ type: 'success', message: 'Thêm mới thành công' });
-      }
-      setIsModalOpen(false);
-      refetch();
+      await categoryApi.deleteCategory(categoryId);
+      setCategories(categories.filter(c => c.id !== categoryId));
+      showToast('success', 'Category deleted');
+      setDeleteConfirm(null);
     } catch (err) {
-      showToast({ type: 'error', message: err?.message || 'Lỗi' });
+      showToast('error', err.message || 'Failed to delete category');
     }
   };
 
   const columns = [
     {
-      key: 'name',
-      header: 'Tên',
-      width: '200px',
+      header: 'Name',
       accessor: 'name',
+      render: (row) => (
+        <p className="font-medium text-body-md text-ink dark:text-ink">
+          {row.name}
+        </p>
+      ),
     },
     {
-      key: 'description',
-      header: 'Mô tả',
-      width: '300px',
+      header: 'Description',
       accessor: 'description',
-      render: (value) => value ? value.substring(0, 50) + '...' : '-',
+      render: (row) => (
+        <p className="text-body-sm text-ink-muted dark:text-ink-muted line-clamp-2">
+          {row.description || '-'}
+        </p>
+      ),
     },
     {
-      key: 'icon',
-      header: 'Icon',
-      width: '100px',
-      accessor: 'icon',
+      header: 'Books',
+      accessor: 'book_count',
+      render: (row) => (
+        <p className="text-body-sm font-medium text-primary dark:text-primary-light">
+          {row.book_count || 0}
+        </p>
+      ),
+    },
+    {
+      header: 'Actions',
+      accessor: 'id',
+      render: (row) => (
+        <div className="flex gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={Edit2}
+            onClick={() => handleOpenForm(row)}
+          />
+          <Button
+            variant="danger"
+            size="sm"
+            icon={Trash2}
+            onClick={() => setDeleteConfirm(row.id)}
+          />
+        </div>
+      ),
     },
   ];
 
   return (
-    <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Quản lý danh mục</h1>
-        <p className="text-gray-600 mt-1">Quản lý danh mục sách</p>
-      </div>
-
-      <CrudTable
-        data={categoriesData?.data || []}
-        columns={columns}
-        loading={loading}
-        page={page}
-        totalPages={categoriesData?.totalPages || 1}
-        onPageChange={(p) => setSearchParams({ page: p.toString(), q: search })}
-        onSearch={(q) => setSearchParams({ q })}
-        onAdd={handleAdd}
-        onEdit={handleEdit}
-        onDelete={handleDeleteCategory}
-        searchPlaceholder="Tìm kiếm danh mục..."
+    <div className="space-y-6">
+      {/* Header */}
+      <PageHeader
+        title="Categories"
+        subtitle="Manage book categories"
+        actions={
+          <Button
+            variant="primary"
+            size="lg"
+            icon={Plus}
+            onClick={() => handleOpenForm()}
+          >
+            Add Category
+          </Button>
+        }
       />
 
-      {/* Modal */}
-      {isModalOpen && (
-        <Modal
-          title={editingItem ? 'Chỉnh sửa danh mục' : 'Thêm danh mục'}
-          onClose={() => setIsModalOpen(false)}
-        >
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <FormField label="Tên" required error={errors.name?.message}>
-              <input
-                {...register('name')}
-                type="text"
-                placeholder="Tên danh mục"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </FormField>
-
-            <FormField label="Mô tả" error={errors.description?.message}>
-              <textarea
-                {...register('description')}
-                placeholder="Mô tả danh mục"
-                rows={3}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </FormField>
-
-            <FormField label="Icon" error={errors.icon?.message}>
-              <input
-                {...register('icon')}
-                type="text"
-                placeholder="Emoji hoặc biểu tượng"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </FormField>
-
-            <div className="flex gap-3 justify-end pt-4">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setIsModalOpen(false)}
-              >
-                Hủy
-              </Button>
-              <Button
-                type="submit"
-                variant="primary"
-                loading={isSubmitting}
-                disabled={isSubmitting}
-              >
-                {editingItem ? 'Cập nhật' : 'Thêm mới'}
-              </Button>
-            </div>
-          </form>
-        </Modal>
+      {/* Table */}
+      {error ? (
+        <ErrorState message={error} onRetry={() => window.location.reload()} />
+      ) : categories.length === 0 ? (
+        <EmptyState
+          title="No categories"
+          description="Create your first category"
+          action={() => handleOpenForm()}
+          actionLabel="Add Category"
+        />
+      ) : (
+        <DataTable columns={columns} data={categories} loading={loading} />
       )}
+
+      {/* Form Modal */}
+      <Modal
+        isOpen={formOpen}
+        onClose={() => setFormOpen(false)}
+        title={editingId ? 'Edit Category' : 'Add Category'}
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => setFormOpen(false)}
+              disabled={saving}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleSave}
+              loading={saving}
+            >
+              Save
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <FormField label="Category Name" required>
+            <Input
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              placeholder="e.g., Fiction"
+            />
+          </FormField>
+
+          <FormField label="Description">
+            <Textarea
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              placeholder="Describe this category..."
+              rows={3}
+            />
+          </FormField>
+        </div>
+      </Modal>
+
+      {/* Delete Confirmation */}
+      <ConfirmModal
+        isOpen={deleteConfirm !== null}
+        title="Delete Category?"
+        message="This category will be deleted."
+        confirmLabel="Delete"
+        variant="danger"
+        onConfirm={() => deleteConfirm && handleDelete(deleteConfirm)}
+        onCancel={() => setDeleteConfirm(null)}
+      />
     </div>
   );
 };
