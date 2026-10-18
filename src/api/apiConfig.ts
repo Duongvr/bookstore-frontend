@@ -5,19 +5,19 @@
 
 export const API_CONFIG = {
   CATALOG_SERVICE: {
-    BASE_URL: import.meta.env.VITE_CATALOG_URL || 'http://localhost:8080/api/catalog',
+    BASE_URL: (import.meta as any).env.VITE_CATALOG_URL || 'http://localhost:8080/api/catalog',
     TIMEOUT: 10000,
   },
   USER_SERVICE: {
-    BASE_URL: import.meta.env.VITE_USER_URL || 'http://localhost:8081/api',
+    BASE_URL: (import.meta as any).env.VITE_USER_URL || 'http://localhost:8081/api',
     TIMEOUT: 10000,
   },
   ORDER_SERVICE: {
-    BASE_URL: import.meta.env.VITE_ORDER_URL || 'http://localhost:8082/api',
+    BASE_URL: (import.meta as any).env.VITE_ORDER_URL || 'http://localhost:8082/api',
     TIMEOUT: 10000,
   },
   INVENTORY_SERVICE: {
-    BASE_URL: import.meta.env.VITE_INVENTORY_URL || 'http://localhost:8084/api/inventory',
+    BASE_URL: (import.meta as any).env.VITE_INVENTORY_URL || 'http://localhost:8084/api/inventory',
     TIMEOUT: 10000,
   },
 };
